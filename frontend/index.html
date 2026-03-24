@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>O2C Graph Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<!-- marked.js for Markdown rendering in chat -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b14;--surface:#0e1220;--surface2:#141928;--surface3:#1c2235;
+  --border:rgba(99,120,200,0.14);--border2:rgba(99,120,200,0.26);
+  --accent:#6366f1;--accent-dim:#4f52c7;--accent2:#10b981;
+  --text:#e2e8f0;--muted:#64748b;--muted2:#94a3b8;
+  --danger:#ef4444;--warn:#f59e0b;--orange:#f97316;
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── HEADER ── */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 18px;height:52px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+.logo{display:flex;align-items:center;gap:9px}
+.logo-icon{width:28px;height:28px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.logo h1{font-size:14px;font-weight:600;white-space:nowrap}
+.logo h1 span{color:var(--accent)}
+.badge{font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted2);white-space:nowrap}
+.badge.green{color:var(--accent2);border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.08)}
+.badge.purple{color:var(--accent);border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.08)}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:7px}
+.ctrl-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted2);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap}
+.ctrl-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--border2)}
+.ctrl-btn.warn{color:var(--orange);border-color:rgba(249,115,22,.35)}
+.ctrl-btn.warn:hover{background:rgba(249,115,22,.1)}
+#load-btn{background:linear-gradient(135deg,var(--accent),var(--accent-dim));color:white;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit;box-shadow:0 2px 12px rgba(99,102,241,.25)}
+#load-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.4)}
+#load-btn:disabled{opacity:.45;transform:none;cursor:not-allowed}
+
+/* ── LAYOUT ── */
+main{flex:1;display:flex;overflow:hidden;min-height:0}
+#graph-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0}
+#graph-panel{flex:1;position:relative;overflow:hidden;background:var(--bg);min-height:0}
+#graph-panel::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(99,102,241,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,.02) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+#cy{width:100%;height:100%;position:relative;z-index:1}
+
+/* ── TIME SLIDER ── */
+#time-bar{flex-shrink:0;height:54px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:12px;z-index:5}
+.time-label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+#time-slider{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--pct,100%),var(--surface3) var(--pct,100%));border-radius:4px;outline:none;cursor:pointer}
+#time-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:white;border:3px solid var(--accent);cursor:pointer;box-shadow:0 0 8px rgba(99,102,241,.5)}
+.time-stages{display:flex;gap:5px}
+.stage-pill{font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid var(--border);color:var(--muted);background:var(--surface2);cursor:pointer;transition:all .15s;white-space:nowrap}
+.stage-pill:hover{border-color:var(--border2);color:var(--text)}
+.stage-pill.active{border-color:var(--accent);color:var(--accent);background:rgba(99,102,241,.12)}
+#time-display{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);min-width:90px;text-align:right}
+#time-play-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted2);width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:all .15s}
+#time-play-btn:hover{background:var(--surface3);color:var(--text)}
+#time-play-btn.playing{border-color:var(--accent);color:var(--accent)}
+
+/* ── SEMANTIC SEARCH ── */
+#search-bar{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:310px;z-index:20;display:flex;align-items:center;gap:8px;background:rgba(14,18,32,.95);backdrop-filter:blur(12px);border:1px solid var(--border2);border-radius:10px;padding:7px 12px;box-shadow:0 4px 24px rgba(0,0,0,.4);transition:border-color .2s}
+#search-bar:focus-within{border-color:var(--accent);box-shadow:0 4px 24px rgba(99,102,241,.2)}
+#semantic-input{background:transparent;border:none;outline:none;color:var(--text);font-size:12px;font-family:'Inter',sans-serif;flex:1}
+#semantic-input::placeholder{color:var(--muted)}
+#search-clear{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0;display:none;flex-shrink:0}
+#search-badge{font-size:10px;background:rgba(99,102,241,.15);color:var(--accent);padding:2px 7px;border-radius:10px;white-space:nowrap;display:none}
+
+/* ── NODE DETAIL ── */
+#node-detail{position:absolute;top:58px;left:16px;width:228px;background:rgba(14,18,32,.96);backdrop-filter:blur(12px);border:1px solid var(--border2);border-radius:12px;padding:15px;display:none;z-index:15;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .15s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.nd-header{display:flex;align-items:center;gap:7px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid var(--border)}
+.nd-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+#nd-title{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.nd-type{font-size:9px;padding:2px 6px;border-radius:10px;background:var(--surface3);color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.nd-centrality{font-size:10px;color:var(--warn);padding:4px 8px;background:rgba(234,179,8,.08);border-radius:6px;margin-bottom:8px;display:none;line-height:1.4}
+.nd-attrs{display:flex;flex-direction:column;gap:4px}
+.detail-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.detail-key{color:var(--muted);flex-shrink:0}
+.detail-val{text-align:right;color:var(--muted2);word-break:break-all;font-family:'JetBrains Mono',monospace;font-size:10px}
+.nd-actions{display:flex;gap:5px;margin-top:11px;flex-wrap:wrap}
+.nd-btn{flex:1;min-width:60px;font-size:10.5px;padding:5px 8px;border-radius:7px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);cursor:pointer;font-family:inherit;transition:all .15s;text-align:center;white-space:nowrap}
+.nd-btn:hover{background:var(--accent);border-color:var(--accent);color:white}
+.nd-btn.primary{background:var(--accent);border-color:var(--accent);color:white}
+
+/* ── ANOMALY PANEL ── */
+#anomaly-panel{position:absolute;bottom:62px;left:16px;width:248px;background:rgba(14,18,32,.96);backdrop-filter:blur(12px);border:1px solid rgba(249,115,22,.25);border-radius:12px;padding:14px;display:none;z-index:15;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.anomaly-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.anomaly-title{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--orange);font-weight:600;display:flex;align-items:center;gap:6px}
+.anomaly-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0;line-height:1}
+.anomaly-item{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.anomaly-item:last-child{margin-bottom:0}
+.anomaly-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:0 2px 2px 0}
+.anomaly-item:hover{border-color:var(--border2);transform:translateX(2px)}
+.anomaly-item-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.anomaly-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.anomaly-label{font-size:11px;font-weight:500;flex:1}
+.anomaly-count{font-size:10px;font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:8px;background:var(--surface3);color:var(--warn)}
+.anomaly-desc{font-size:10px;color:var(--muted2);line-height:1.4}
+.anomaly-actions{display:flex;gap:5px;margin-top:7px}
+.anomaly-btn{font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--surface3);color:var(--muted2);cursor:pointer;font-family:inherit;transition:all .15s}
+.anomaly-btn:hover{color:var(--text);border-color:var(--border2)}
+.anomaly-btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(99,102,241,.08)}
+
+/* ── MINI MAP ── */
+#minimap{position:absolute;bottom:62px;right:16px;width:158px;height:108px;background:rgba(14,18,32,.92);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;overflow:hidden;z-index:15}
+#minimap canvas{display:block;width:100%;height:100%}
+#minimap-vp{position:absolute;border:1.5px solid var(--accent);border-radius:2px;pointer-events:none;background:rgba(99,102,241,.07)}
+
+/* ── LEGEND ── */
+#legend{position:absolute;bottom:62px;left:50%;transform:translateX(-50%);background:rgba(14,18,32,.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:10px;padding:9px 14px;z-index:10;display:flex;gap:12px;align-items:center;white-space:nowrap}
+.li{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted2);cursor:pointer;transition:color .15s}
+.li:hover{color:var(--text)}
+.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#graph-hint{position:absolute;top:12px;right:16px;font-size:10px;color:var(--muted);background:rgba(14,18,32,.7);backdrop-filter:blur(8px);padding:5px 10px;border-radius:6px;border:1px solid var(--border);z-index:10;pointer-events:none}
+
+/* ── RIGHT PANEL ── */
+#right-panel{width:400px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 4px}
+.tab{flex:1;padding:11px 4px;text-align:center;font-size:11px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── CHAT ── */
+#chat-section{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+#messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.welcome-card{background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(16,185,129,.05));border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:16px}
+.welcome-card h3{font-size:13px;font-weight:600;margin-bottom:6px}
+.welcome-card p{font-size:12px;color:var(--muted2);line-height:1.6;margin-bottom:10px}
+.quick-queries{display:flex;flex-direction:column;gap:5px}
+.quick-q{font-size:11px;color:var(--accent);padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,.2);cursor:pointer;transition:all .15s;background:rgba(99,102,241,.05)}
+.quick-q:hover{background:rgba(99,102,241,.15);border-color:var(--accent)}
+.msg{display:flex;flex-direction:column;gap:3px}
+.msg.user{align-items:flex-end}
+.msg.assistant{align-items:flex-start}
+.bubble{max-width:95%;padding:11px 14px;font-size:12.5px;line-height:1.65;border-radius:12px}
+.msg.user .bubble{background:linear-gradient(135deg,var(--accent),var(--accent-dim));color:white;border-radius:14px 14px 4px 14px;box-shadow:0 2px 12px rgba(99,102,241,.25)}
+.msg.assistant .bubble{background:var(--surface2);border:1px solid var(--border);border-radius:4px 14px 14px 14px;color:var(--text)}
+/* Markdown rendering inside assistant bubbles */
+.bubble p{margin-bottom:6px;line-height:1.65}
+.bubble p:last-child{margin-bottom:0}
+.bubble ul,.bubble ol{padding-left:18px;margin:6px 0}
+.bubble li{margin-bottom:3px;line-height:1.55;font-size:12px}
+.bubble strong{color:#c7d2fe;font-weight:600}
+.bubble code{background:rgba(99,102,241,.15);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a5b4fc}
+.bubble h4{font-size:12px;font-weight:600;color:var(--accent);margin:8px 0 4px}
+.msg-time{font-size:9.5px;color:var(--muted);padding:0 4px}
+.sql-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px;font-weight:600;padding:0 2px}
+.sql-block{font-family:'JetBrains Mono',monospace;font-size:10px;background:#060a14;border:1px solid rgba(99,102,241,.2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:10px 12px;overflow-x:auto;color:#a5b4fc;white-space:pre;line-height:1.5;max-height:110px;overflow-y:auto}
+.error-block{font-size:11px;color:var(--danger);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:7px 10px;margin-top:5px}
+.typing-bubble{background:var(--surface2);border:1px solid var(--border);border-radius:4px 14px 14px 14px;padding:12px 16px;display:flex;align-items:center;gap:5px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite;opacity:.6}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.3);opacity:1}}
+#hn-area{padding:10px 16px;border-top:1px solid var(--border);background:rgba(99,102,241,.04);flex-shrink:0}
+.hn-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.hn-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;flex-shrink:0}
+.node-pills{display:flex;flex-wrap:wrap;gap:5px;max-height:56px;overflow-y:auto}
+.node-pill{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 9px;border-radius:20px;background:rgba(99,102,241,.12);color:#a5b4fc;border:1px solid rgba(99,102,241,.25);cursor:pointer;transition:all .15s;white-space:nowrap}
+.node-pill:hover{background:var(--accent);color:white;border-color:var(--accent)}
+#chat-input-area{padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0}
+.input-wrap{display:flex;gap:8px;align-items:flex-end;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:8px 8px 8px 14px;transition:border-color .2s}
+.input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+#question{flex:1;background:transparent;border:none;color:var(--text);font-size:12.5px;font-family:inherit;resize:none;min-height:20px;max-height:100px;outline:none;line-height:1.5}
+#question::placeholder{color:var(--muted)}
+#send-btn{background:var(--accent);color:white;border:none;border-radius:8px;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+#send-btn:hover{background:var(--accent-dim);transform:scale(1.05)}
+#send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.input-hint{font-size:10px;color:var(--muted);margin-top:5px;text-align:center}
+
+/* ── EXAMPLES ── */
+#examples-section{flex:1;overflow-y:auto;padding:16px;display:none;flex-direction:column;gap:6px}
+.ex-group-title{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;margin-bottom:2px;margin-top:6px}
+.ex-group-title:first-child{margin-top:0}
+.example-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px 11px 16px;cursor:pointer;font-size:12px;line-height:1.5;transition:all .15s;color:var(--muted2);position:relative;overflow:hidden}
+.example-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);transform:scaleY(0);transition:transform .15s;border-radius:0 2px 2px 0}
+.example-card:hover{border-color:var(--border2);color:var(--text);background:var(--surface3);transform:translateX(2px)}
+.example-card:hover::before{transform:scaleY(1)}
+.example-card strong{display:block;color:var(--accent);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+
+/* ── RESULTS ── */
+#results-section{flex:1;overflow-y:auto;padding:16px;display:none}
+.results-meta{font-size:11px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead{background:var(--surface3);position:sticky;top:0}
+th{padding:8px 12px;text-align:left;color:var(--muted2);font-weight:500;font-size:10px;white-space:nowrap;letter-spacing:.3px;border-bottom:1px solid var(--border);text-transform:uppercase}
+td{padding:7px 12px;border-bottom:1px solid rgba(99,120,200,.06);color:var(--muted2);white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10.5px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,.04);color:var(--text)}
+.empty-state{text-align:center;color:var(--muted);padding:40px 20px;font-size:12px;line-height:1.8}
+.empty-icon{font-size:28px;margin-bottom:10px;opacity:.4}
+
+/* ── LOADING ── */
+#loading-overlay{position:fixed;inset:0;background:rgba(8,11,20,.88);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:16px}
+#loading-overlay.show{display:flex}
+.loader-ring{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-text{font-size:13px;color:var(--muted2)}
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loader-text">Loading...</div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔗</div>
+    <h1>O2C <span>Graph</span> Explorer</h1>
+  </div>
+  <span class="badge green" id="status-badge">Connecting...</span>
+  <span class="badge purple" id="graph-stats">—</span>
+  <div class="header-right">
+    <button class="ctrl-btn" onclick="cy.fit(null,40)">⊡ Fit</button>
+    <button class="ctrl-btn" onclick="cy.zoom(cy.zoom()*1.25)">＋</button>
+    <button class="ctrl-btn" onclick="cy.zoom(cy.zoom()*0.8)">－</button>
+    <button class="ctrl-btn" onclick="clearHighlights()">✕ Reset</button>
+    <button class="ctrl-btn warn" id="anomaly-btn" onclick="toggleAnomalyPanel()">⚠ Anomalies</button>
+    <button id="load-btn" onclick="loadData()">↻ Load Data</button>
+  </div>
+</header>
+
+<main>
+  <div id="graph-area">
+    <div id="graph-panel">
+      <div id="cy"></div>
+
+      <!-- Semantic Search -->
+      <div id="search-bar">
+        <span style="color:var(--muted);font-size:13px;flex-shrink:0">🔍</span>
+        <input id="semantic-input" type="text" placeholder='Search: "late orders", "high value", "bridge"...' oninput="onSearchInput(this.value)" onkeydown="if(event.key==='Escape')clearSearch()"/>
+        <span id="search-badge"></span>
+        <button id="search-clear" onclick="clearSearch()">✕</button>
+      </div>
+
+      <!-- Node Detail -->
+      <div id="node-detail">
+        <div class="nd-header">
+          <div class="nd-dot" id="nd-dot"></div>
+          <div id="nd-title">—</div>
+          <div class="nd-type" id="nd-type">—</div>
+        </div>
+        <div class="nd-centrality" id="nd-centrality"></div>
+        <div class="nd-attrs" id="nd-attrs"></div>
+        <div class="nd-actions">
+          <button class="nd-btn primary" onclick="expandNode()">↗ Expand</button>
+          <button class="nd-btn" onclick="ghostOthers()">👁 Focus</button>
+          <button class="nd-btn" onclick="queryNode()">💬 Ask AI</button>
+        </div>
+      </div>
+
+      <!-- Anomaly Panel -->
+      <div id="anomaly-panel">
+        <div class="anomaly-header">
+          <div class="anomaly-title">⚠ Broken Flows</div>
+          <button class="anomaly-close" onclick="toggleAnomalyPanel()">×</button>
+        </div>
+        <div id="anomaly-list"><div style="font-size:11px;color:var(--muted)">Loading...</div></div>
+      </div>
+
+      <!-- Mini Map -->
+      <div id="minimap">
+        <canvas id="mm-canvas"></canvas>
+        <div id="minimap-vp"></div>
+      </div>
+
+      <!-- Legend -->
+      <div id="legend">
+        <div class="li" onclick="filterByType('customer')"><div class="ld" style="background:#10b981"></div>Customer</div>
+        <div class="li" onclick="filterByType('sales_order')"><div class="ld" style="background:#6366f1"></div>Sales Order</div>
+        <div class="li" onclick="filterByType('delivery')"><div class="ld" style="background:#38bdf8"></div>Delivery</div>
+        <div class="li" onclick="filterByType('billing_document')"><div class="ld" style="background:#f97316"></div>Billing</div>
+        <div class="li" onclick="filterByType('payment')"><div class="ld" style="background:#eab308"></div>Payment</div>
+        <div class="li" onclick="filterByType('product')"><div class="ld" style="background:#ec4899"></div>Product</div>
+        <div class="li" onclick="clearHighlights()"><div class="ld" style="background:var(--muted)"></div>All</div>
+      </div>
+
+      <div id="graph-hint">Scroll=zoom · Drag=pan · Click=inspect · Hover=focus</div>
+    </div>
+
+    <!-- Time Travel Bar -->
+    <div id="time-bar">
+      <div class="time-label">⏱ Time</div>
+      <button id="time-play-btn" onclick="togglePlay()">▶</button>
+      <input type="range" id="time-slider" min="0" max="100" value="100" oninput="onTimeSlide(this.value)"/>
+      <div class="time-stages">
+        <div class="stage-pill active" onclick="jumpStage(0)">Orders</div>
+        <div class="stage-pill" onclick="jumpStage(1)">Delivery</div>
+        <div class="stage-pill" onclick="jumpStage(2)">Billing</div>
+        <div class="stage-pill" onclick="jumpStage(3)">Payment</div>
+      </div>
+      <div id="time-display">All time</div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="right-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('chat')" id="tab-chat">💬 Chat</div>
+      <div class="tab" onclick="switchTab('examples')" id="tab-examples">📋 Examples</div>
+      <div class="tab" onclick="switchTab('results')" id="tab-results">📊 Results</div>
+    </div>
+
+    <div id="chat-section">
+      <div id="messages">
+        <div class="welcome-card">
+          <h3>👋 O2C Intelligence Suite</h3>
+          <p>Chat with your data · Explore anomalies · Search semantically · Time-travel through your supply chain</p>
+          <div class="quick-queries">
+            <div class="quick-q" onclick="runQuery(this.textContent)">Which customers have the highest order value?</div>
+            <div class="quick-q" onclick="runQuery(this.textContent)">Find orders delivered but not yet billed</div>
+            <div class="quick-q" onclick="runQuery(this.textContent)">Which products appear most in billing documents?</div>
+          </div>
+        </div>
+      </div>
+      <div id="hn-area" style="display:none">
+        <div class="hn-label"><div class="hn-dot"></div>Highlighted in graph</div>
+        <div class="node-pills" id="node-pills"></div>
+      </div>
+      <div id="chat-input-area">
+        <div class="input-wrap">
+          <textarea id="question" rows="1" placeholder="Ask about your O2C data..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <button id="send-btn" onclick="sendQuery()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+
+    <div id="examples-section">
+      <div class="ex-group-title">📊 Analytics</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Top Billed Products</strong>Which products are associated with the highest number of billing documents?</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Revenue by Customer</strong>Which customers have the highest total net amount across all sales orders?</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Delivery Status Breakdown</strong>Count sales orders grouped by their overall delivery status</div>
+      <div class="ex-group-title">🔍 Flow Tracing</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Full O2C Status</strong>Show me all sales orders along with their delivery and billing status</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Broken Flows</strong>Identify sales orders that have been delivered but not yet billed</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Cancelled Billings</strong>Which billing documents have been cancelled and what are their total amounts?</div>
+      <div class="ex-group-title">🏭 Operations</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Plant Delivery Volume</strong>Which plant has the most outbound delivery items?</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Uncleared Payments</strong>Show payments where the clearing date is empty or missing</div>
+      <div class="example-card" onclick="runExample(this)"><strong>Product Inventory</strong>List all products with their storage locations and plant assignments</div>
+    </div>
+
+    <div id="results-section">
+      <div class="empty-state"><div class="empty-icon">📊</div>Run a query to see results here</div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── marked.js config ─────────────────────────────────────────────────────────
+if (typeof marked !== 'undefined') {
+  marked.setOptions({ breaks: true, gfm: true });
+}
+function renderMarkdown(text) {
+  if (typeof marked !== 'undefined') {
+    // Replace • with - for marked to parse as list
+    const clean = text.replace(/^•\s/gm, '- ');
+    return marked.parse(clean);
+  }
+  return escHtml(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let cy = null, selectedNodeId = null, conversationHistory = [];
+let allElements = [], timeEpochs = [], timePlayInterval = null;
+let anomalyData = [], mmCtx = null, searchDebounce = null;
+const API = '';
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  initCy(); initMinimap();
+  await checkStatus(); await loadGraph(); await loadAnomalies();
+});
+
+// ── Cytoscape ─────────────────────────────────────────────────────────────────
+function initCy() {
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    style: [
+      { selector: 'node', style: {
+        'background-color': 'data(color)',
+        'border-width': 0,
+        // FIX #2: Node size = betweenness centrality (intelligent sizing)
+        'width':  'mapData(centrality,0,100,13,46)',
+        'height': 'mapData(centrality,0,100,13,46)',
+        'label': 'data(shortLabel)',
+        'font-size': '7.5px',
+        'font-family': "'JetBrains Mono',monospace",
+        'color': 'rgba(226,232,240,0.6)',
+        'text-valign': 'bottom', 'text-margin-y': '4px',
+        'text-max-width': '60px', 'text-wrap': 'ellipsis',
+        // FIX #2: Subtle glow only, keep nodes dominant
+        'shadow-blur': '8', 'shadow-color': 'data(color)',
+        'shadow-opacity': 0.22, 'shadow-offset-x': 0, 'shadow-offset-y': 0,
+        'transition-property': 'width height opacity border-width shadow-opacity',
+        'transition-duration': '0.22s',
+      }},
+      { selector: 'node.highlighted', style: {
+        'border-width': 2.5, 'border-color': '#fff',
+        'width': 'mapData(centrality,0,100,20,56)',
+        'height': 'mapData(centrality,0,100,20,56)',
+        'shadow-opacity': 0.85, 'color': '#fff',
+        'font-size': '9px', 'z-index': 999,
+      }},
+      { selector: 'node.faded', style: { 'opacity': 0.07, 'shadow-opacity': 0 }},
+      { selector: 'node.hover-focus', style: { 'border-width': 2, 'border-color': 'rgba(255,255,255,.7)', 'z-index': 500 }},
+      { selector: 'node.selected-node', style: { 'border-width': 2.5, 'border-color': '#fff', 'shadow-opacity': 1, 'z-index': 1000 }},
+      { selector: 'node.anomaly-broken', style: { 'border-width': 2, 'border-color': '#f97316', 'border-style': 'dashed', 'shadow-color': '#f97316', 'shadow-opacity': 0.65 }},
+      { selector: 'node.anomaly-orphan', style: { 'border-width': 2, 'border-color': '#ef4444', 'border-style': 'dashed', 'shadow-color': '#ef4444', 'shadow-opacity': 0.65 }},
+      // FIX #2: Very dim edges so nodes are dominant
+      { selector: 'edge', style: {
+        'width': 0.6,
+        'line-color': 'rgba(99,102,241,0.13)',    // <-- dimmer edges
+        'target-arrow-color': 'rgba(99,102,241,0.22)',
+        'target-arrow-shape': 'triangle',
+        'arrow-scale': 0.5,
+        'curve-style': 'bezier',
+        'opacity': 0.65,
+        'transition-property': 'opacity line-color width',
+        'transition-duration': '0.2s',
+      }},
+      { selector: 'edge.highlighted', style: { 'line-color': 'rgba(99,102,241,0.6)', 'target-arrow-color': 'rgba(99,102,241,.8)', 'width': 1.5, 'opacity': 1 }},
+      { selector: 'edge.faded', style: { 'opacity': 0.03 }},
+      { selector: 'edge.anomaly-edge', style: { 'line-color': '#f97316', 'line-style': 'dashed', 'line-dash-pattern': [6,3], 'target-arrow-color': '#f97316', 'width': 1.5, 'opacity': 0.9 }},
+    ],
+    layout: { name: 'cose', animate: false },
+    // FIX #2: Stronger repulsion to spread clusters
+    wheelSensitivity: 0.25, minZoom: 0.04, maxZoom: 8,
+  });
+
+  cy.on('tap', 'node', e => {
+    selectedNodeId = e.target.id();
+    cy.nodes().removeClass('selected-node');
+    e.target.addClass('selected-node');
+    showNodeDetail(e.target.data());
+  });
+  cy.on('tap', e => {
+    if (e.target === cy) { document.getElementById('node-detail').style.display = 'none'; cy.nodes().removeClass('selected-node'); }
+  });
+
+  // FIX #2: Hover = ghost non-neighbors
+  cy.on('mouseover', 'node', e => {
+    document.body.style.cursor = 'pointer';
+    const node = e.target;
+    const connected = new Set([node.id()]);
+    node.neighborhood().forEach(el => { if (el.isNode()) connected.add(el.id()); });
+    cy.nodes().forEach(n => { if (!connected.has(n.id())) n.addClass('faded'); else n.addClass('hover-focus'); });
+    cy.edges().forEach(ed => { if (!connected.has(ed.source().id()) || !connected.has(ed.target().id())) ed.addClass('faded'); });
+  });
+  cy.on('mouseout', 'node', () => {
+    document.body.style.cursor = '';
+    cy.nodes().removeClass('faded hover-focus');
+    cy.edges().removeClass('faded');
+  });
+
+  cy.on('viewport render', updateMinimap);
+}
+
+async function loadGraph() {
+  try {
+    const res = await fetch(`${API}/api/graph?max_nodes=400`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.elements?.length) return;
+    allElements = data.elements;
+
+    // Collect valid epochs for time-travel
+    timeEpochs = allElements
+      .filter(el => !el.data.source && el.data.epoch > 86400) // exclude zero/near-zero
+      .map(el => el.data.epoch).sort((a,b) => a-b);
+
+    allElements.forEach(el => {
+      if (!el.data.source) {
+        const id = el.data.id || '';
+        el.data.shortLabel = id.includes(':') ? id.split(':')[1] : id;
+      }
+    });
+
+    cy.add(allElements);
+    // FIX #2: Stronger physics — more spread
+    cy.layout({
+      name: 'cose', animate: true, animationDuration: 900,
+      nodeRepulsion: 18000,        // was 12000 — more spread
+      idealEdgeLength: 110,        // was 90 — longer edges
+      edgeElasticity: 80,
+      gravity: 0.6,
+      numIter: 600,
+      coolingFactor: 0.97,
+      fit: true, padding: 50,
+    }).run();
+    document.getElementById('graph-stats').textContent = `${cy.nodes().length} nodes · ${cy.edges().length} edges`;
+    setTimeout(updateMinimap, 1200);
+  } catch(e) { console.warn('Graph load failed:', e); }
+}
+
+// ── TIME TRAVEL ───────────────────────────────────────────────────────────────
+function onTimeSlide(pct) {
+  document.getElementById('time-slider').style.setProperty('--pct', pct + '%');
+  pct = parseFloat(pct);
+
+  if (pct >= 99) {
+    cy.elements().style({ display: 'element', opacity: null });
+    document.getElementById('time-display').textContent = 'All time';
+    setStagePills(3); return;
+  }
+
+  const maxFlow = 7;
+  const currentFlow = (pct / 100) * maxFlow;
+
+  cy.nodes().forEach(n => {
+    const fo = parseFloat(n.data('flow_order') || 5);
+    if (fo <= currentFlow) { n.style('display', 'element'); n.style('opacity', Math.min(1, currentFlow - fo + 1)); }
+    else n.style('display', 'none');
+  });
+  cy.edges().forEach(e => {
+    const ok = e.source().style('display') !== 'none' && e.target().style('display') !== 'none';
+    e.style('display', ok ? 'element' : 'none');
+  });
+
+  const si = currentFlow >= 6 ? 3 : currentFlow >= 5 ? 2 : currentFlow >= 4 ? 1 : 0;
+  setStagePills(si);
+
+  // FIX #1: Only show date if we have real epoch data (not fallback values)
+  if (timeEpochs.length > 0) {
+    const idx = Math.min(Math.floor((pct / 100) * (timeEpochs.length - 1)), timeEpochs.length - 1);
+    const ep = timeEpochs[idx];
+    // FIX #1: Validate epoch is a reasonable date (after 2000-01-01)
+    if (ep > 946684800) {
+      const d = new Date(ep * 1000);
+      document.getElementById('time-display').textContent =
+        d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } else {
+      const stages = ['Orders stage','Delivery stage','Billing stage','Payment stage'];
+      document.getElementById('time-display').textContent = stages[si] || 'In progress';
+    }
+  } else {
+    const stages = ['Orders stage','Delivery stage','Billing stage','Payment stage'];
+    document.getElementById('time-display').textContent = stages[si] || 'In progress';
+  }
+}
+
+function setStagePills(active) {
+  document.querySelectorAll('.stage-pill').forEach((p, i) => p.classList.toggle('active', i <= active));
+}
+function jumpStage(i) {
+  const pcts = [20, 50, 72, 90];
+  document.getElementById('time-slider').value = pcts[i];
+  onTimeSlide(pcts[i]);
+}
+function togglePlay() {
+  const btn = document.getElementById('time-play-btn');
+  if (timePlayInterval) {
+    clearInterval(timePlayInterval); timePlayInterval = null;
+    btn.textContent = '▶'; btn.classList.remove('playing');
+  } else {
+    btn.textContent = '⏸'; btn.classList.add('playing');
+    let v = 0;
+    document.getElementById('time-slider').value = 0; onTimeSlide(0);
+    timePlayInterval = setInterval(() => {
+      v += 0.7; if (v > 100) { v = 100; clearInterval(timePlayInterval); timePlayInterval = null; btn.textContent = '▶'; btn.classList.remove('playing'); }
+      document.getElementById('time-slider').value = v; onTimeSlide(v);
+    }, 55);
+  }
+}
+
+// ── SEMANTIC SEARCH ───────────────────────────────────────────────────────────
+function onSearchInput(val) {
+  clearTimeout(searchDebounce);
+  const clear = document.getElementById('search-clear');
+  const badge = document.getElementById('search-badge');
+  if (!val.trim()) { clearSearch(); return; }
+  clear.style.display = 'block';
+  searchDebounce = setTimeout(async () => {
+    try {
+      const res = await fetch(`${API}/api/search`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ query: val, max_results: 80 }) });
+      const data = await res.json();
+      if (data.node_ids?.length) {
+        badge.textContent = `${data.node_ids.length} matches`; badge.style.display = 'block';
+        doHighlight(data.node_ids);
+        showPills(data.node_ids.slice(0, 20));
+      } else {
+        badge.textContent = 'No matches'; badge.style.display = 'block';
+        clearHighlights();
+      }
+    } catch(e) { console.warn(e); }
+  }, 350);
+}
+function clearSearch() {
+  document.getElementById('semantic-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  document.getElementById('search-badge').style.display = 'none';
+  clearHighlights(); hidePills();
+}
+
+// ── ANOMALY ───────────────────────────────────────────────────────────────────
+async function loadAnomalies() {
+  try {
+    const res = await fetch(`${API}/api/anomalies`);
+    const data = await res.json();
+    anomalyData = data.anomalies || [];
+    renderAnomalyPanel();
+  } catch(e) { console.warn(e); }
+}
+
+function renderAnomalyPanel() {
+  const list = document.getElementById('anomaly-list');
+  const btn = document.getElementById('anomaly-btn');
+  if (!anomalyData.length) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--accent2)">✓ No broken flows detected</div>';
+    return;
+  }
+  btn.textContent = `⚠ Anomalies (${anomalyData.length})`;
+
+  list.innerHTML = anomalyData.map((a, i) => `
+    <div class="anomaly-item" style="--acolor:${a.color}">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${a.color};border-radius:0 2px 2px 0"></div>
+      <div class="anomaly-item-top">
+        <div class="anomaly-dot" style="background:${a.color}"></div>
+        <span class="anomaly-label">${a.label}</span>
+        <span class="anomaly-count">${a.node_ids.length}</span>
+      </div>
+      <div class="anomaly-desc">${a.description}</div>
+      <div class="anomaly-actions">
+        <button class="anomaly-btn primary" onclick="highlightAnomaly(${i})">🔍 Highlight</button>
+        <button class="anomaly-btn" onclick="askAnomaly(${i})">💬 Ask AI</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleAnomalyPanel() {
+  const p = document.getElementById('anomaly-panel');
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+}
+
+function highlightAnomaly(i) {
+  const a = anomalyData[i];
+  if (!a) return;
+  cy.elements().removeClass('highlighted faded anomaly-broken anomaly-orphan anomaly-edge');
+  const cls = a.type.includes('orphan') ? 'anomaly-orphan' : 'anomaly-broken';
+  const found = new Set(a.node_ids);
+  a.node_ids.forEach(id => { const n = cy.getElementById(id); if (n.length) { n.addClass(cls); n.addClass('highlighted'); } });
+  cy.nodes().forEach(n => { if (!found.has(n.id())) n.addClass('faded'); });
+  cy.edges().forEach(e => { e.addClass('faded'); });
+  a.node_ids.forEach(id => { cy.getElementById(id).connectedEdges().removeClass('faded').addClass('anomaly-edge'); });
+  const matched = cy.nodes('.highlighted');
+  if (matched.length) cy.animate({ fit: { eles: matched, padding: 80 }, duration: 700, easing: 'ease-in-out-cubic' });
+  showPills(a.node_ids.slice(0, 20));
+  document.getElementById('hn-area').style.display = 'block';
+}
+
+function askAnomaly(i) {
+  const a = anomalyData[i];
+  if (!a) return;
+  runQuery(a.chat_query || a.description);
+  switchTab('chat');
+}
+
+// ── GHOST FOCUS ───────────────────────────────────────────────────────────────
+function ghostOthers() {
+  if (!selectedNodeId) return;
+  const node = cy.getElementById(selectedNodeId);
+  const connected = new Set([selectedNodeId]);
+  node.neighborhood().forEach(el => { if (el.isNode()) connected.add(el.id()); });
+  node.neighborhood().neighborhood().forEach(el => { if (el.isNode()) connected.add(el.id()); });
+  cy.nodes().forEach(n => { n.classList.toggle('faded', !connected.has(n.id())); if (connected.has(n.id())) n.addClass('highlighted'); });
+  cy.edges().forEach(e => { if (!connected.has(e.source().id()) || !connected.has(e.target().id())) e.addClass('faded'); else e.addClass('highlighted'); });
+}
+
+// ── MINI MAP ──────────────────────────────────────────────────────────────────
+function initMinimap() {
+  const canvas = document.getElementById('mm-canvas');
+  const cont = document.getElementById('minimap');
+  canvas.width = cont.offsetWidth; canvas.height = cont.offsetHeight;
+  mmCtx = canvas.getContext('2d');
+}
+
+function updateMinimap() {
+  if (!cy || !mmCtx) return;
+  const canvas = document.getElementById('mm-canvas');
+  const W = canvas.width, H = canvas.height;
+  mmCtx.clearRect(0, 0, W, H);
+  const bb = cy.elements(':visible').boundingBox();
+  if (!bb || bb.w === 0 || bb.h === 0) return;
+  const pad = 6, scaleX = (W-pad*2)/bb.w, scaleY = (H-pad*2)/bb.h;
+  const sc = Math.min(scaleX, scaleY);
+  const ox = pad + (W-pad*2-bb.w*sc)/2, oy = pad + (H-pad*2-bb.h*sc)/2;
+  mmCtx.strokeStyle = 'rgba(99,102,241,0.18)'; mmCtx.lineWidth = 0.3;
+  cy.edges(':visible').forEach(e => {
+    const sp = e.source().position(), tp = e.target().position();
+    mmCtx.beginPath();
+    mmCtx.moveTo(ox+(sp.x-bb.x1)*sc, oy+(sp.y-bb.y1)*sc);
+    mmCtx.lineTo(ox+(tp.x-bb.x1)*sc, oy+(tp.y-bb.y1)*sc);
+    mmCtx.stroke();
+  });
+  cy.nodes(':visible').forEach(n => {
+    const pos = n.position(), r = Math.max(1.2, parseFloat(n.data('centrality')||0)*0.03+1.2);
+    mmCtx.beginPath();
+    mmCtx.arc(ox+(pos.x-bb.x1)*sc, oy+(pos.y-bb.y1)*sc, r, 0, Math.PI*2);
+    mmCtx.fillStyle = n.data('color') || '#6366f1'; mmCtx.fill();
+  });
+  const pan = cy.pan(), zoom = cy.zoom();
+  const vx = ox+(-pan.x/zoom-bb.x1)*sc, vy = oy+(-pan.y/zoom-bb.y1)*sc;
+  const vw = (cy.width()/zoom)*sc, vh = (cy.height()/zoom)*sc;
+  const vp = document.getElementById('minimap-vp');
+  vp.style.left = Math.max(0,vx)+'px'; vp.style.top = Math.max(0,vy)+'px';
+  vp.style.width = Math.min(vw,W-Math.max(0,vx))+'px'; vp.style.height = Math.min(vh,H-Math.max(0,vy))+'px';
+}
+
+// ── NODE DETAIL ───────────────────────────────────────────────────────────────
+function showNodeDetail(data) {
+  document.getElementById('node-detail').style.display = 'block';
+  document.getElementById('nd-dot').style.background = data.color || '#6366f1';
+  document.getElementById('nd-title').textContent = data.id;
+  document.getElementById('nd-type').textContent = (data.node_type||'').replace(/_/g,' ');
+  const cent = parseFloat(data.centrality||0);
+  const cEl = document.getElementById('nd-centrality');
+  if (cent > 20) {
+    cEl.style.display = 'block';
+    cEl.textContent = cent > 70 ? `🌉 Critical bridge (${cent}%)` : cent > 40 ? `🔗 High-connectivity hub (${cent}%)` : `📡 Bridge node (${cent}%)`;
+  } else { cEl.style.display = 'none'; }
+  const skip = new Set(['id','label','shortLabel','color','node_type','centrality','epoch','flow_order','degree']);
+  const attrs = Object.entries(data).filter(([k,v])=>!skip.has(k)&&v&&String(v).trim()).slice(0,7);
+  document.getElementById('nd-attrs').innerHTML = attrs.map(([k,v])=>
+    `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${String(v).slice(0,30)}</span></div>`
+  ).join('');
+}
+
+async function expandNode() {
+  if (!selectedNodeId) return;
+  try {
+    const res = await fetch(`${API}/api/graph/node/${encodeURIComponent(selectedNodeId)}?depth=1`);
+    const data = await res.json();
+    if (!data.elements?.length) return;
+    const existing = new Set(cy.elements().map(e => e.id()));
+    const newEls = data.elements.filter(e => !existing.has(e.data.id));
+    if (newEls.length) {
+      newEls.forEach(el => { if (!el.data.source) { const id=el.data.id||''; el.data.shortLabel=id.includes(':')?id.split(':')[1]:id; } });
+      cy.add(newEls);
+      cy.layout({ name:'cose', animate:true, fit:false, nodeRepulsion:12000 }).run();
+      document.getElementById('graph-stats').textContent = `${cy.nodes().length} nodes · ${cy.edges().length} edges`;
+      setTimeout(updateMinimap, 800);
+    }
+  } catch(e) { console.warn(e); }
+}
+function queryNode() { if (!selectedNodeId) return; runQuery(`Tell me everything about ${selectedNodeId} — its type, connections, amounts, dates, and current status in the O2C flow`); }
+
+// ── HIGHLIGHT / FILTER ────────────────────────────────────────────────────────
+function doHighlight(ids) {
+  cy.elements().removeClass('highlighted faded anomaly-broken anomaly-orphan anomaly-edge');
+  const found = new Set();
+  ids.forEach(id => { const n = cy.getElementById(id); if (n.length) { n.addClass('highlighted'); found.add(id); } });
+  if (!found.size) return;
+  cy.nodes().forEach(n => { if (!found.has(n.id())) n.addClass('faded'); });
+  cy.edges().forEach(e => { if (found.has(e.source().id())&&found.has(e.target().id())) e.addClass('highlighted'); else e.addClass('faded'); });
+  cy.animate({ fit:{ eles:cy.nodes('.highlighted'), padding:80 }, duration:700, easing:'ease-in-out-cubic' });
+}
+function clearHighlights() {
+  cy.elements().removeClass('highlighted faded selected-node anomaly-broken anomaly-orphan anomaly-edge');
+  cy.elements().style({ display:'element', opacity:null });
+  document.getElementById('node-detail').style.display = 'none';
+  document.getElementById('time-slider').value = 100;
+  document.getElementById('time-slider').style.setProperty('--pct','100%');
+  document.getElementById('time-display').textContent = 'All time';
+  setStagePills(3);
+}
+function filterByType(type) { doHighlight(cy.nodes(`[node_type="${type}"]`).map(n=>n.id())); }
+
+// ── CHAT ──────────────────────────────────────────────────────────────────────
+async function sendQuery() {
+  const input = document.getElementById('question');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = ''; input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  appendMsg('user', q); appendTyping(); switchTab('chat');
+  conversationHistory.push({ role:'user', content:q });
+  try {
+    const res = await fetch(`${API}/api/query`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ question:q, conversation_history:conversationHistory }) });
+    const data = await res.json();
+    removeTyping();
+    appendMsg('assistant', data.answer||'No answer.', data.sql, data.error);
+    conversationHistory.push({ role:'assistant', content:data.answer||'' });
+    if (data.node_ids?.length) { doHighlight(data.node_ids); showPills(data.node_ids); }
+    else { clearHighlights(); hidePills(); }
+    if (data.columns?.length) renderTable(data.columns, data.rows||[]);
+  } catch(e) { removeTyping(); appendMsg('assistant', `Error: ${e.message}`); }
+  document.getElementById('send-btn').disabled = false; input.focus();
+}
+function runQuery(q) { document.getElementById('question').value = q; switchTab('chat'); sendQuery(); }
+function handleKey(e) { if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendQuery(); } }
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
+
+function appendMsg(role, text, sql=null, error=null) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const time = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  // FIX #3: Use markdown rendering for assistant responses
+  const content = role === 'assistant' ? renderMarkdown(text) : escHtml(text);
+  let html = `<div class="bubble">${content}</div>`;
+  if (sql) html += `<div class="sql-label">Generated SQL</div><div class="sql-block">${escHtml(sql)}</div>`;
+  if (error) html += `<div class="error-block">⚠ ${escHtml(error)}</div>`;
+  html += `<div class="msg-time">${time}</div>`;
+  div.innerHTML = html; msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+function appendTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.id = 'typing'; div.className = 'msg assistant';
+  div.innerHTML = '<div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+function removeTyping() { document.getElementById('typing')?.remove(); }
+function showPills(ids) {
+  document.getElementById('hn-area').style.display = 'block';
+  document.getElementById('node-pills').innerHTML = ids.slice(0,20).map(id=>
+    `<span class="node-pill" onclick="focusNode('${id}')">${id}</span>`
+  ).join('');
+}
+function hidePills() { document.getElementById('hn-area').style.display = 'none'; }
+function focusNode(id) { const n=cy.getElementById(id); if(n.length){cy.animate({fit:{eles:n,padding:120},duration:600});showNodeDetail(n.data());} }
+function runExample(card) { const q=card.querySelector('strong').nextSibling?.textContent?.trim()||''; runQuery(q); switchTab('chat'); }
+function renderTable(cols, rows) {
+  const s = document.getElementById('results-section');
+  if (!rows.length) { s.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div>No results returned</div>'; return; }
+  const thead = cols.map(c=>`<th>${escHtml(c)}</th>`).join('');
+  const tbody = rows.slice(0,200).map(row=>`<tr>${row.map(v=>`<td>${escHtml(String(v??''))}</td>`).join('')}</tr>`).join('');
+  s.innerHTML = `<div class="results-meta"><span style="color:var(--accent2)">${rows.length} rows</span><span>${cols.length} columns</span></div><div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+}
+function switchTab(tab) {
+  ['chat','examples','results'].forEach(t=>{document.getElementById(`tab-${t}`)?.classList.toggle('active',t===tab);});
+  document.getElementById('chat-section').style.display    = tab==='chat'    ?'flex':'none';
+  document.getElementById('examples-section').style.display = tab==='examples'?'flex':'none';
+  document.getElementById('results-section').style.display  = tab==='results' ?'block':'none';
+}
+
+// ── STATUS / LOAD ─────────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const res = await fetch(`${API}/api/status`);
+    const data = await res.json();
+    const b = document.getElementById('status-badge');
+    b.textContent = `${data.graph_nodes||0} nodes · ${data.db_tables||0} tables`;
+    b.className = 'badge green';
+  } catch { document.getElementById('status-badge').textContent = 'API offline'; }
+}
+async function loadData() {
+  const btn = document.getElementById('load-btn');
+  const ov = document.getElementById('loading-overlay');
+  btn.disabled=true; ov.classList.add('show');
+  document.getElementById('loader-text').textContent = 'Ingesting JSONL files...';
+  try {
+    await fetch(`${API}/api/load-data`,{method:'POST'});
+    document.getElementById('loader-text').textContent = 'Building graph + computing centrality...';
+    cy.elements().remove(); await loadGraph();
+    await checkStatus(); await loadAnomalies();
+  } catch(e) { alert('Load failed: '+e.message); }
+  ov.classList.remove('show'); btn.disabled=false;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
