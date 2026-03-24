@@ -29,7 +29,9 @@ from database import get_connection, DB_PATH
 from dotenv import load_dotenv
 load_dotenv()
 
-DATA_DIR = os.environ.get("DATA_DIR", "data")
+# This ensures Render finds the 'data' folder at the root of the project
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = str(BASE_DIR / "data")
 
 # ── All 19 canonical table names ─────────────────────────────────────────────
 # Key = folder name OR file stem → Value = SQLite table name
