@@ -153,6 +153,7 @@ Node sizes are computed using `networkx.betweenness_centrality()` — not just e
 > Use the **Time Travel Slider** at the bottom to visualize the document flow from Sales → Delivery → Billing.
 
 ### 🎥 System Demo
-<video src="https://github.com/surajvishwakarma11/o2c-graph-system/blob/main/demo.mp4?raw=true" controls="controls" style="max-width: 100%;">
+<video controls src="demo.mp4" title="Title"></video>
+controls="controls" style="max-width: 100%;">
   Your browser does not support the video tag.
 </video>
