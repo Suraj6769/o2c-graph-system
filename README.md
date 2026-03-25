@@ -148,4 +148,6 @@ Node sizes are computed using `networkx.betweenness_centrality()` — not just e
 
 ## 📸 Preview
 > [!TIP]
+
+![alt text](image.png)
 > Use the **Time Travel Slider** at the bottom to visualize the document flow from Sales → Delivery → Billing.
