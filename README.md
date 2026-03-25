@@ -152,8 +152,3 @@ Node sizes are computed using `networkx.betweenness_centrality()` — not just e
 ![alt text](image.png)
 > Use the **Time Travel Slider** at the bottom to visualize the document flow from Sales → Delivery → Billing.
 
-### 🎥 System Demo
-<video controls src="demo.mp4" title="Title"></video>
-controls="controls" style="max-width: 100%;">
-  Your browser does not support the video tag.
-</video>
