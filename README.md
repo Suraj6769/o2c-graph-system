@@ -145,3 +145,7 @@ Each anomaly card has two buttons: **🔍 Highlight** (filters graph) and **💬
 
 ### 📐 Betweenness Centrality Node Sizing
 Node sizes are computed using `networkx.betweenness_centrality()` — not just edge count. A Plant that bridges the Sales cluster to the Shipping cluster appears large because it is structurally important, even if it has few direct connections. The node detail panel labels these: "🌉 Critical bridge", "🔗 High-connectivity hub".
+
+## 📸 Preview
+> [!TIP]
+> Use the **Time Travel Slider** at the bottom to visualize the document flow from Sales → Delivery → Billing.
