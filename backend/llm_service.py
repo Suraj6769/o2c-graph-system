@@ -1,9 +1,5 @@
 """
-LLM Service with improved prompts:
-- Markdown-formatted responses with bullet points and bold IDs
-- Two-call pipeline: SQL generation + NL answer
-- Guardrails, self-correction, node ID extraction
-- Fixed SAP Item-level Join Rules
+LLM Service with professional SAP formatting and table/column citations.
 """
 
 import os
@@ -118,40 +114,47 @@ def execute_sql(sql: str) -> tuple[list[str], list[tuple]]:
     finally:
         conn.close()
 
-# ── NL Answer Generation (Markdown-formatted) ─────────────────────────────────
+# ── NL Answer Generation (Formatted with Citations) ───────────────────────────
 
-NL_ANSWER_PROMPT = """You are a business analyst for an SAP Order-to-Cash system. Answer the user's question based on the SQL query results below.
+NL_ANSWER_PROMPT = """You are a professional SAP Business Analyst. 
+Answer the user's question based ONLY on the SQL query results below.
 
 USER QUESTION: "{question}"
 
-QUERY RESULTS ({row_count} rows):
+QUERY RESULTS:
 {results_preview}
 
-FORMATTING RULES — follow these exactly:
-1. Use **bold** for all document IDs (e.g. **740555**), monetary amounts (e.g. **€1,234.56**), and key entity names.
-2. Use bullet points (•) when listing 3 or more items.
-3. Start with a one-sentence summary of the key finding.
-4. Then give supporting details using bullets or a short numbered list.
-5. If relevant, end with a "💡 Insight:" line calling out a business implication.
-6. Keep total response under 180 words.
-7. Do NOT mention SQL, tables, or technical terms.
-8. If result is empty, clearly say no matching records were found and suggest why.
-{overflow_note}
+FORMATTING RULES (STRICT COMPLIANCE):
+1. **Citations**: For every Document ID, Monetary Amount, or Status you mention, you MUST append its source in square brackets.
+   Format: [TableName.ColumnName]
+   Example: "Sales Order **740555** [sales_order_headers.salesOrder] for **€1,200** [sales_order_items.netValue] is blocked."
+
+2. **Visual Style**:
+   - Use **bold** for IDs, currencies, and dates.
+   - Use bullet points (•) for lists of 3 or more items.
+   - Start with a one-sentence summary of the finding.
+
+3. **Insight**: If applicable, end with a "💡 Business Insight:" line.
+
+4. **Tone**: Executive and direct. Do NOT mention technical terms like "SQL", "Table", or "Query".
 
 Answer:"""
 
 def generate_nl_answer(question: str, sql: str, columns: list[str], rows: list) -> str:
+    if not rows:
+        return "No matching records were found in the SAP system. Please verify if the IDs or criteria provided are correct."
+
     preview_rows = rows[:25]
     header = " | ".join(columns)
     body = "\n".join(" | ".join(str(v) for v in row) for row in preview_rows)
-    results_str = f"{header}\n{body}"
-    overflow = f"\n9. Note: showing top {len(preview_rows)} of {len(rows)} total rows." if len(rows) > 25 else ""
-
+    
+    # We include a snippet of the SQL in the preview so the LLM 
+    # knows exactly which tables were involved to create citations.
+    results_str = f"SOURCE SQL CONTEXT: {sql}\n\nDATA:\n{header}\n{body}"
+    
     prompt = NL_ANSWER_PROMPT.format(
         question=question,
-        row_count=len(rows),
-        results_preview=results_str,
-        overflow_note=overflow,
+        results_preview=results_str
     )
     return _call_llm(prompt)
 
@@ -174,7 +177,6 @@ def extract_node_ids(columns: list[str], rows: list) -> list[str]:
             for row in rows[:50]:
                 val = row[i]
                 if val is not None and val != "":
-                    # Strip leading zeros to ensure clean matching with the UI graph
                     val_clean = str(val).lstrip('0')
                     if val_clean:
                         node_ids.append(f"{prefix}:{val_clean}")
@@ -200,7 +202,6 @@ def handle_query(question: str, conversation_history: list[dict] | None = None) 
         except Exception as e:
             error = str(e)
             if attempt < MAX_SQL_RETRIES:
-                # Updated retry prompt to remind the LLM about the schema
                 question = f"{question}\n\n[Previous SQL execution failed with error: {error}. Review the DATABASE SCHEMA provided and fix the column/table names.]"
             else:
                 return {"answer": f"I couldn't generate a valid query for that question. ({error})",
