@@ -63,7 +63,7 @@ cd backend
 python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open http://localhost:8000
+Open https://o2c-graph-system.onrender.com/
 
 ### 5. Load data
 Click **"⟳ Load Data"** in the top bar to ingest all JSONL files.
